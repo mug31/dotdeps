@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+hasil.json
+dotdeps-graph.png

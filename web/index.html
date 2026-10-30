@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>dotdeps</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="wrap">
+    <!-- 1. Input -->
+    <section class="hero">
+      <p class="brand"><span class="logo">◆</span> dotdeps</p>
+      <h1>Cek dependensi dotfiles</h1>
+      <p class="lead">Temukan file config yang hilang dan program yang belum terinstall.</p>
+
+      <div class="seg" role="tablist" aria-label="Sumber dotfiles">
+        <button type="button" role="tab" data-source="real">Laptop ini</button>
+        <button type="button" role="tab" data-source="github">GitHub</button>
+        <button type="button" role="tab" data-source="samples">Contoh</button>
+      </div>
+
+      <form class="scan-row" id="scan-form">
+        <div class="source-input" data-for="github">
+          <input type="text" id="repo" placeholder="user/dotfiles atau link GitHub" spellcheck="false" autocomplete="off">
+        </div>
+        <p class="source-note" data-for="real">Memindai <code id="real-path">~/.config</code> di laptop ini.</p>
+        <p class="source-note" data-for="samples">Dotfiles contoh yang sengaja diberi error.</p>
+        <button type="submit" class="primary" id="btn-scan">Scan</button>
+      </form>
+
+      <p class="examples" data-for="github">
+        Coba:
+        <button type="button" class="chip-btn" data-repo="JaKooLit/Hyprland-Dots">JaKooLit/Hyprland-Dots</button>
+        <button type="button" class="chip-btn" data-repo="prasanthrangan/hyprdots">prasanthrangan/hyprdots</button>
+        <button type="button" class="chip-btn" data-repo="mylinuxforwork/dotfiles">mylinuxforwork/dotfiles</button>
+      </p>
+
+      <details class="advanced">
+        <summary>Opsi lanjutan</summary>
+        <div class="adv-body">
+          <div data-for="real samples">
+            <p class="adv-label">App yang discan
+              <button type="button" class="link" id="apps-default">default</button> ·
+              <button type="button" class="link" id="apps-all">semua</button>
+            </p>
+            <div class="apps" id="apps"></div>
+          </div>
+          <label class="check"><input type="checkbox" id="opt-all"> Scan semua folder config <span class="muted">(--all)</span></label>
+          <label class="check" data-for="real samples"><input type="checkbox" id="opt-follow" checked> Ikuti include ke luar <code>.config</code></label>
+          <p class="cli">Perintah CLI setara: <code id="cli-cmd"></code></p>
+        </div>
+      </details>
+
+      <p class="status" id="status" role="status"></p>
+    </section>
+
+    <!-- 2. Hasil -->
+    <section class="result hidden" id="result">
+      <div class="verdict" id="verdict"></div>
+
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" class="tab active" data-tab="issues">Daftar masalah</button>
+        <button type="button" role="tab" class="tab" data-tab="graph">Graph</button>
+      </div>
+
+      <div class="tab-panel" id="panel-issues"></div>
+
+      <div class="tab-panel hidden" id="panel-graph">
+        <div class="graph-toolbar">
+          <input type="search" id="search" placeholder="Cari file atau program…" spellcheck="false">
+          <select id="layout" aria-label="Layout">
+            <option value="dagre-lr">Hierarki →</option>
+            <option value="dagre-tb">Hierarki ↓</option>
+            <option value="cose">Force-directed</option>
+            <option value="concentric">Konsentris</option>
+          </select>
+          <label class="toggle"><input type="checkbox" id="f-programs" checked> Program</label>
+          <label class="toggle"><input type="checkbox" id="f-problems"> Hanya masalah</label>
+          <button type="button" id="btn-fit">Fit</button>
+          <button type="button" id="btn-png">PNG</button>
+        </div>
+        <div class="graph-box">
+          <div id="cy" aria-label="Graph dependensi"></div>
+          <div class="legend">
+            <span><i class="sw sw-file"></i>file</span>
+            <span><i class="sw sw-bin"></i>program</span>
+            <span><i class="sw sw-bad"></i>masalah</span>
+            <span><i class="sw sw-cycle"></i>cycle</span>
+            <span><i class="sw sw-ext"></i>luar</span>
+          </div>
+          <aside class="drawer hidden" id="drawer">
+            <button type="button" class="close" id="drawer-close" aria-label="Tutup">×</button>
+            <div id="drawer-body"></div>
+          </aside>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="vendor/cytoscape.min.js"></script>
+  <script src="vendor/dagre.min.js"></script>
+  <script src="vendor/cytoscape-dagre.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

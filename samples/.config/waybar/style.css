@@ -1,0 +1,5 @@
+/* Tema Waybar */
+@import "colors.css";
+@import "../tema/tidak-ada.css";
+
+window#waybar { background: @base; }

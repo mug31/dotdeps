@@ -4,214 +4,180 @@
 
 NIM: 240605110182
 
-CLI Python murni (tanpa library eksternal) untuk memindai konfigurasi Linux di
-`~/.config` (Hyprland, Waybar, kitty, dll) — di laptop sendiri **atau dari repo
-dotfiles orang lain di GitHub** — memetakan ketergantungan antar file dan
-program sebagai graph, lalu mendeteksi:
+Program Python untuk memeriksa file konfigurasi Linux (dotfiles) di `~/.config`,
+khususnya Hyprland dan kitty. Program ini memetakan file config mana yang memanggil
+file lain dan program apa saja yang dijalankan, menyusunnya menjadi **graph**, lalu
+mendeteksi tiga jenis masalah:
 
 | Masalah | Contoh |
 |---|---|
-| **Broken link** | `source = ~/.config/hypr/theme.conf` padahal file tidak ada |
-| **Missing package** | `exec-once = waybar` padahal `waybar` tidak terinstall |
-| **Include melingkar** | `hyprland.conf → keybinds.conf → hyprland.conf` |
-| **Nilai dinamis** | `exec_cmd(command)`: tidak bisa dicek statis, dilaporkan sebagai info |
-| **Di luar repo** | khusus scan GitHub: file yang memang tidak ikut di-upload, bukan error |
+| **Broken link** | `source = ~/.config/hypr/theme.conf` padahal filenya tidak ada |
+| **Program tidak ada** | `exec-once = waybar` padahal `waybar` belum terinstall |
+| **Include melingkar** | `keybinds.conf → extra.conf → keybinds.conf` |
+
+Hasilnya bisa dilihat di terminal atau di browser. Di browser, daftar dependensi dan
+graph-nya saling terhubung.
 
 ## Kebutuhan
 
-- Python **3.9+** (`graphlib` baru ada sejak 3.9)
-- Library bawaan saja: `re`, `pathlib`, `shutil`, `graphlib`, `shlex`, `argparse`, `json`,
-  `http.server`, `urllib.request`, `tarfile`, `tempfile`
-- Frontend web (opsional): Cytoscape.js + dagre, sudah disertakan di `web/vendor/`
+- Python **3.6** atau lebih baru
+- Tidak perlu install library apa pun. Semua yang dipakai bawaan Python:
+  `re`, `os`, `shutil`, `sys`, `json`, `http.server`
+- Tampilan web memakai Cytoscape.js 3.30.2 + dagre 0.8.5 + cytoscape-dagre 2.5.0,
+  sudah disertakan di `web/vendor/`, jadi tetap jalan tanpa internet
+
+## Cara menjalankan
+
+Masuk ke folder project dulu:
+
+```bash
+cd dotdeps
+```
+
+### Versi web (disarankan)
+
+```bash
+python3 web.py
+```
+
+Lalu buka **http://localhost:8000** di browser.
+
+- Pilih **Laptop ini** untuk memindai config asli di `~/.config`, atau **Contoh**
+  untuk memindai dotfiles contoh yang sengaja diberi error.
+- Klik baris di daftar (kiri) untuk menyorot node-nya di graph (kanan), atau klik
+  node di graph untuk menandai barisnya di daftar.
+- Kotak **Cari** dan centang **Hanya masalah** menyaring daftar dan graph sekaligus.
+- Tekan `Ctrl+C` di terminal untuk mematikan server.
+
+### Versi terminal
+
+```bash
+python3 dotdeps.py                          # scan config asli di ~/.config
+python3 dotdeps.py --home contoh            # scan dotfiles contoh
+python3 dotdeps.py --home contoh cari kitty # siapa saja yang memanggil "kitty"?
+```
+
+Contoh hasil:
+
+```
+6 file config dipindai
+
+BROKEN LINK   ~/.config/hypr/theme.conf  (dipanggil di ~/.config/hypr/hyprland.conf)
+TIDAK ADA     waybar  (dipanggil di ~/.config/hypr/hyprland.conf)
+TIDAK ADA     browser-fiktif  (dipanggil di ~/.config/hypr/hyprland.conf)
+BROKEN LINK   ~/.config/kitty/tema-hilang.conf  (dipanggil di ~/.config/kitty/kitty.conf)
+TIDAK ADA     wofi  (dipanggil di ~/.config/hypr/keybinds.conf)
+MELINGKAR     extra.conf -> keybinds.conf -> extra.conf
+```
 
 ## Struktur
 
 ```
 dotdeps/
-├── main.py        # CLI (argparse): scan, tree, search, order
-├── models.py      # dataclass Dependency, Issue, enum DepKind/Status
-├── parser.py      # pattern matching (regex) per format config
-├── graph.py       # pembangunan graph (BFS), DFS rantai, cycle (graphlib)
-├── validator.py   # cek file ada (pathlib) & binary ada di $PATH (shutil.which)
-├── report.py      # tampilan terminal berwarna, tree, JSON
-├── scanner.py     # alur scan bersama untuk CLI dan web
-├── github.py      # unduh repo GitHub (urllib + tarfile) & deteksi struktur folder
-├── server.py      # web server lokal (http.server) + API JSON
-├── web/           # antarmuka web: index.html, app.js, style.css
-│   └── vendor/    # Cytoscape.js 3.30.2, dagre 0.8.5, cytoscape-dagre 2.5.0
-├── samples/.config/   # dotfiles contoh dengan error yang disengaja
-└── tests/test_dotdeps.py
+├── dotdeps.py     # SEMUA algoritma: regex, BFS, validasi, DFS, pencarian
+├── web.py         # web server: kirim hasil dotdeps.py sebagai JSON + file tampilan
+├── web/           # tampilan web (HTML, CSS, JavaScript)
+│   └── vendor/    # library graph Cytoscape.js + dagre
+└── contoh/.config/   # dotfiles contoh dengan error yang disengaja
 ```
 
-## Cara menjalankan
-
-```bash
-cd ~/Projects/dotdeps
-
-# 1. Demo pakai dotfiles contoh (aman, tidak menyentuh config asli)
-python3 main.py --home samples scan --tree
-
-# 2. Scan config asli (default: hypr, waybar, kitty, foot, mako, ...)
-python3 main.py scan
-python3 main.py scan -a hypr -v        # hanya Hyprland, tampilkan semua detail
-python3 main.py scan --all             # seluruh ~/.config
-
-# 3. Pencarian dependensi: siapa yang memanggil program/file ini?
-python3 main.py search kitty
-python3 main.py search monitors.conf
-
-# 4. Tree dependensi & urutan resolusi (topological sort)
-python3 main.py tree -a hypr --depth 2
-python3 main.py order
-
-# 5. Cek dotfiles orang lain langsung dari GitHub
-python3 main.py scan --github JaKooLit/Hyprland-Dots
-python3 main.py scan --github https://github.com/user/dotfiles/tree/dev --all
-
-# 6. Output JSON (untuk diproses tool lain / CI)
-python3 main.py scan --json > hasil.json
-
-# 7. Antarmuka web interaktif (graph + tombol scan)
-python3 main.py serve                  # buka http://localhost:8765
-python3 main.py serve --port 9000 --no-browser
-
-# Unit test
-python3 -m unittest discover -s tests -v
-```
-
-## Scan dari GitHub (`--github`)
-
-1. **Unduh**: arsip `.tar.gz` repo diambil dengan `urllib` (tanpa `git`, tanpa
-   token) dan diekstrak secara *streaming* dengan `tarfile`. Hanya file teks
-   kecil yang diambil; wallpaper, font, dll. dilewati. Filter `data` milik
-   `tarfile` menolak path absolut, `..`, dan symlink yang keluar folder.
-2. **Deteksi struktur**: setiap orang menyusun repo berbeda (`config/hypr`,
-   `Configs/.config/hypr`, `dotfiles/.config/hypr`, atau GNU Stow
-   `hypr/.config/hypr`). Folder yang paling banyak berisi subfolder app umum
-   (hypr, waybar, kitty, …) dianggap sebagai `~/.config`.
-3. **Home virtual**: folder sementara berisi symlink `.config/<app>` ke folder
-   di repo, sehingga `source = ~/.config/hypr/x.conf` dan
-   `os.getenv("HOME")` mengarah ke file di dalam repo. Folder dihapus setelah scan.
-4. **Validasi** sama seperti scan lokal, dengan arti yang sedikit berbeda:
-   *missing package* = program yang **belum terinstall di laptopmu** untuk
-   memakai dotfiles itu. File yang memang tidak ikut di-upload (hasil generate
-   tema, script di `$PATH` pemiliknya) dilaporkan terpisah sebagai
-   *di luar repo*, bukan error.
-
-Isi repo hanya dibaca sebagai teks; tidak ada script yang dijalankan.
-
-## Antarmuka web (`serve`)
-
-Browser tidak bisa membaca `~/.config` secara langsung, jadi `serve` menyalakan
-web server lokal (`http.server`, bawaan Python). Halaman web memanggil
-`/api/scan`, lalu Python menjalankan parser → graph → validator yang sama
-dengan CLI dan mengirim hasilnya sebagai JSON.
-
-Tampilannya dibuat sederhana (*progressive disclosure*): pertanyaan utama
-"ada masalah atau tidak?" dijawab dulu, detail baru muncul saat diminta.
-
-1. **Input**: pilih sumber *Laptop ini* / *GitHub* / *Contoh*, lalu **Scan**.
-   Pilihan app, `--all`, dan perintah CLI setara ada di *Opsi lanjutan*.
-2. **Ringkasan**: satu kalimat, mis. "8 masalah ditemukan — 8 program belum
-   terinstall di laptopmu".
-3. **Daftar masalah** (tab utama): dikelompokkan per jenis, tiap baris punya
-   tombol *Lihat di graph*. Kategori yang bukan error (di luar repo, nilai
-   dinamis) dilipat.
-4. **Graph** (tab kedua): dirender dengan [Cytoscape.js](https://js.cytoscape.org)
-   + layout dagre. Merah = masalah, ungu = include melingkar, kuning putus-putus
-   = di luar repo. Klik node → panel detail berisi lokasi baris pemanggil,
-   jalur dari titik masuk, dan dependensinya. Ada pencarian, filter, pilihan
-   layout, dan **ekspor PNG** untuk laporan.
-
-Library JavaScript disimpan lokal di `web/vendor/`, jadi halaman tetap jalan
-tanpa internet (internet hanya dibutuhkan untuk scan GitHub). Server hanya
-listen di `127.0.0.1`, menolak header `Host` asing, dan seluruh operasinya
-read-only.
-
-Exit code: `0` = semua dependensi terpenuhi, `1` = ada masalah, `2` = error input.
-Jadi bisa dipakai di script, misal `python3 main.py scan && echo aman`.
+`web.py` tidak punya algoritma sendiri. Ia hanya memanggil fungsi di `dotdeps.py`
+lalu mengirim hasilnya ke browser, jadi versi terminal dan versi web selalu
+memberikan hasil yang sama.
 
 ## Cara kerja
 
-### 1. Pattern Matching (`parser.py`)
-
-Setiap format punya regex sendiri. Format dipilih dari ekstensi/folder file
-(`detect_format`).
-
-| Format | Pola yang dikenali | Jenis |
-|---|---|---|
-| Hyprland `.conf` | `source = path`, `exec-once = cmd`, `exec = cmd`, `bind = MOD, KEY, exec, cmd`, `bindd = MOD, KEY, deskripsi, exec, cmd`, `$var = nilai` | file, binary |
-| Hyprland `.lua` | `require("hypr.x")`, `dofile(...)`, `exec_cmd("...")`, `exec_once = { ... }`, `o.bind(k, d, "cmd")`, `local x = "..."` | file, binary |
-| Waybar `.jsonc` | `"include": [...]`, `"exec"`, `"exec-if"`, `"on-click*"`, `"on-scroll*"` | file, binary |
-| CSS | `@import "file.css"` | file |
-| Conf generik | `include = path` / `include path` (kitty, foot, mako) | file |
-
-Detail yang ditangani:
-- Komentar (`#`, `--`, `--[[ ]]`, `//`, `/* */`) dibuang tanpa merusak isi string,
-  dan nomor baris tetap akurat.
-- Ekspansi `~`, `$HOME`, variabel Hyprland (`$terminal`), glob (`conf.d/*.conf`),
-  dan ekspresi Lua sederhana seperti `(os.getenv("X") or "default") .. "/file.lua"`.
-- Variabel Hyprland yang dipakai sebelum didefinisikan (mis. `$term` di
-  `keybinds.conf`, didefinisikan di file yang di-source belakangan) dicoba lagi
-  setelah semua file terbaca.
-- Nama binary diambil dari perintah shell (`extract_binaries`) dengan `shlex`:
-  pembungkus seperti `uwsm app --`, `env VAR=1`, `sh -c "..."`, operator
-  `&&`/`|`/`;`, redirect (`> /dev/null 2>&1`), rule `[workspace 2]`, dan
-  command substitution `$(slurp)`. Aksi bawaan modul Waybar
-  (`"on-click": "activate"`) tidak dianggap program.
-
-### 2. Graph Search (`graph.py`)
-
-- **Node**: `file:/path/config` atau `bin:nama-program`.
-  **Edge** `A → B`: A bergantung pada B.
-- **BFS crawler** (`DependencyGraph.build`): mulai dari file di `~/.config`,
-  setiap `source`/`include`/`require` yang menunjuk file yang ada dimasukkan ke
-  antrian, sehingga file di luar folder (mis. default Omarchy di `/usr/share`)
-  ikut ditelusuri. Matikan dengan `--no-follow`.
-- **DFS mundur** (`paths_to`): mencari rantai root → target untuk perintah `search`.
-- **Deteksi cycle** (`find_cycles`): `graphlib.TopologicalSorter` melempar
-  `CycleError` berisi satu cycle; edge-nya dihapus lalu diulang sampai graph
-  menjadi DAG, sehingga semua cycle terlaporkan.
-- **Topological sort** (`load_order`): urutan file dengan dependensi lebih dulu.
-
-### 3. Validator (`validator.py`)
-
-- File: `Path.exists()` + `os.access(R_OK)` → broken link.
-- Binary: `shutil.which()` (hasil di-cache) → missing package. Untuk path
-  script, dibedakan antara "tidak ada" dan "ada tapi belum `chmod +x`".
-
-## Contoh output (`python3 main.py --home samples scan`)
-
 ```
-◆ dotdeps — Validasi Dependensi Dotfiles
-────────────────────────────────────────────────────────────────
-  File diparse: 9   Relasi: 29   File unik: 10   Program unik: 18
-
-✗ BROKEN LINK (3)
-  • ~/.config/hypr/theme.conf  file tidak ditemukan
-      ↳ ~/.config/hypr/hyprland.conf:8  [source]
-  ...
-✗ MISSING PACKAGE (n)
-  • browser-fiktif  program tidak ada di $PATH
-      ↳ ~/.config/hypr/hyprland.conf:12  [exec-once]
-  ...
-⟳ INCLUDE MELINGKAR (1)
-  • ~/.config/hypr/hyprland.conf → ~/.config/hypr/keybinds.conf → ~/.config/hypr/hyprland.conf
-────────────────────────────────────────────────────────────────
-  ✗ 13 MASALAH DITEMUKAN   17 OK
+file config ──► 1. Pattern matching ──► 2. BFS ──► graph ──► 3. Validasi ──► broken link / program tidak ada
+                   (regex per baris)    (telusuri          ├─► 4. DFS ─────► include melingkar
+                                         file lain)        └─► 5. Pencarian ► siapa yang memanggil X
 ```
 
-Jumlah *missing package* tergantung program yang terinstall di komputer
-masing-masing; `browser-fiktif` dan `wlogout-fiktif` selalu muncul karena
-memang sengaja dibuat tidak ada.
+### 1. Pattern matching (regex): `baca_dependensi`
 
-## Keterbatasan
+Setiap baris file config dicocokkan dengan pola regex. Bagian yang ditangkap oleh
+kurung `( )` diambil sebagai dependensi.
 
-- Analisis statis: perintah yang dibentuk saat runtime (`exec_cmd(command)`,
-  `value.launch`) hanya dilaporkan sebagai *nilai dinamis*, tidak divalidasi.
-- `which` hanya mengecek `$PATH` sesi saat ini; program yang hanya ada di
-  `$PATH` khusus sesi Hyprland bisa terlapor hilang.
-- Tidak memetakan binary ke nama paket (gunakan `pacman -F <bin>`).
-- Scan GitHub hanya untuk repo publik. File yang di-generate saat dipakai
-  (mis. `colors-matugen.conf`) tapi letaknya di dalam folder app tetap
-  terlapor sebagai file tidak ditemukan, karena memang tidak ada di repo.
+| Pola | Mencari | Contoh baris | Yang diambil |
+|---|---|---|---|
+| `POLA_SOURCE` | file yang di-include | `source = ~/.config/hypr/monitors.conf`<br>`include warna.conf` | path file |
+| `POLA_EXEC` | program saat startup | `exec-once = waybar` | `waybar` |
+| `POLA_BIND` | program dari shortcut | `bind = SUPER, Return, exec, kitty` | `kitty` |
+| `POLA_VAR` | variabel Hyprland | `$terminal = kitty` | `terminal` = `kitty` |
+| `POLA_REQUIRE` | modul Lua | `require("hypr.bindings")` | `hypr.bindings` |
+| `POLA_LUA_EXEC` | program dari Lua | `hl.exec_cmd("waybar")` | `waybar` |
+
+Contoh membaca `POLA_SOURCE`, yaitu `^\s*(source|include)\s*=?\s*(\S+)`:
+
+| Potongan | Artinya |
+|---|---|
+| `^\s*` | awal baris, boleh ada spasi di depan |
+| `(source\|include)` | kata `source` atau `include` |
+| `\s*=?\s*` | tanda `=` boleh ada boleh tidak (Hyprland pakai `=`, kitty tidak) |
+| `(\S+)` | path file, yaitu teks sampai ketemu spasi |
+
+Hal-hal pendukung:
+- Komentar dibuang dulu (`#` untuk `.conf`, `--` untuk `.lua`).
+- Variabel seperti `$terminal` diganti nilainya sebelum dicocokkan.
+- Untuk perintah program, yang diambil hanya kata pertama
+  (`swww img wall.png` → `swww`).
+- Nama modul Lua diubah menjadi path oleh `cari_modul_lua`:
+  `hypr.bindings` → `hypr/bindings.lua`, lalu dicari di `~/.config` dan di folder
+  bawaan Omarchy (`/usr/share/omarchy`).
+
+### 2. BFS (Breadth-First Search): `bangun_graph`
+
+Membangun graph mulai dari file utama (`hyprland.conf`, `hyprland.lua`, `kitty.conf`):
+
+1. Masukkan file utama ke **antrian**.
+2. Ambil file paling depan dari antrian (`pop(0)`, FIFO). Inilah yang membuatnya BFS.
+3. Baca dependensinya dengan regex dan simpan ke graph.
+4. Setiap dependensi berupa file dimasukkan ke belakang antrian.
+5. Ulangi sampai antrian kosong. File yang sudah ada di graph dilewati, jadi
+   include melingkar tidak membuat program berputar terus.
+
+Graph disimpan sebagai dict biasa, contohnya:
+
+```python
+{
+  "hyprland.conf": [("file", "monitors.conf"), ("file", "keybinds.conf"), ("program", "waybar")],
+  "keybinds.conf": [("program", "kitty"), ("file", "extra.conf")],
+  ...
+}
+```
+
+### 3. Validasi: `validasi`
+
+Setiap dependensi di graph dicek:
+- **file**: `os.path.exists(path)`. Kalau tidak ada, berarti **BROKEN LINK**.
+- **program**: `shutil.which(nama)`, yaitu mencari program di `$PATH`. Kalau tidak
+  ketemu, berarti **TIDAK ADA**.
+
+### 4. DFS (Depth-First Search): `cari_cycle`
+
+Mencari include melingkar. DFS menelusuri graph sedalam mungkin sambil mencatat
+**jalur** file yang sedang dilewati. Kalau suatu file memanggil file yang **sudah
+ada di jalur**, berarti ada lingkaran:
+
+```
+jalur: [keybinds.conf, extra.conf]
+extra.conf memanggil keybinds.conf → sudah ada di jalur → MELINGKAR
+```
+
+Lingkaran yang sama tapi titik awalnya beda (`A → B → A` dan `B → A → B`)
+hanya dilaporkan sekali.
+
+### 5. Pencarian: `cari`
+
+Memeriksa semua sisi graph dan mengembalikan pasangan (file, target) yang target-nya
+mengandung kata yang dicari. Ini untuk menjawab pertanyaan seperti "file mana saja
+yang memanggil `kitty`?"
+
+## Batasan
+
+- Format yang didukung: config Hyprland (`.conf` dan `.lua`) serta config yang memakai
+  `include` (kitty, foot, dll).
+- `dofile(...)` dan daftar `exec_once = { ... }` di Lua belum dibaca.
+- Pencarian modul Lua hanya di `~/.config` dan folder bawaan Omarchy.
+- Untuk perintah program, hanya kata pertama yang dicek, jadi
+  `uwsm app -- waybar` dicek sebagai `uwsm`.

@@ -1,6 +1,0 @@
-{
-  "custom/weather": {
-    "exec": "~/.config/waybar/scripts/weather.sh",
-    "interval": 600
-  }
-}
